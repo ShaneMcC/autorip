@@ -5,16 +5,20 @@ RIPDIR="/media/data/rips/"
 AUTOEJECT="1"
 RIPALL="1"
 TWOPASS="1"
+X264="1"
 LOGFILE="/tmp/diskinserted.log"
 REPORT_KEY="THISI-SNOTA-VALID-TOKEN"
 REPORT_TYPE="CM"
 REPORT_TARGET="#channel"
+DO_REPORT="1"
 
 echo "${@}" > /tmp/diskinserted
 env >> /tmp/diskinserted
 
 doReport () {
-	echo "-- ${REPORT_KEY} ${REPORT_TYPE} ${REPORT_TARGET} ${1} [`hostname`]" | nc -q 1 soren.co.uk 3302;
+	if [ "0" != "${DO_REPORT}" ]; then
+		echo "-- ${REPORT_KEY} ${REPORT_TYPE} ${REPORT_TARGET} ${1} [`hostname`]" | nc -q 1 soren.co.uk 3302;
+	fi;
 }
 
 # This is here to override any settings above, or redefine doReport.
@@ -46,6 +50,10 @@ DOTWOPASS=""
 if [ "${TWOPASS}" = "1" ]; then
 	DOTWOPASS="--2pass "
 fi;
+DOX264=""
+if [ "${X264}" = "1" ]; then
+	X264="--x264 "
+fi;
 VOLNAME=${HAL_PROP_VOLUME_LABEL}
 if [ "${VOLNAME}" = "" ]; then
 	VOLNAME=`volname ${DRIVE}`
@@ -60,7 +68,7 @@ if [ "${HAL_PROP_VOLUME_DISC_TYPE}" = "dvd_rom" -a "${HAL_PROP_VOLUME_DISC_IS_VI
 		DONE="1";
 		doReport "Beginning Rip of ${VOLNAME} to ${DIRNAME} [RipAll=${RIPALL} | TwoPass=${TWOPASS}]"
 		mkdir -p "${DIRNAME}"
-		/usr/bin/rip_dvd ${ALL}${DOTWOPASS}--x264 -d ${DRIVE} --path "${DIRNAME}" 2>&1 > "${LOGFILE}"
+		/usr/bin/rip_dvd ${ALL}${DOTWOPASS}${DOX264} -d ${DRIVE} --path "${DIRNAME}" 2>&1 > "${LOGFILE}"
 		FILECOUNT=`ls -1 "${DIRNAME}" | wc -l`
 		if [ "${FILECOUNT}" = "0" ]; then
 			doReport "Rip failed for ${VOLNAME}"
