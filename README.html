@@ -1,0 +1,30 @@
+<!-- [Readme for gitweb] -->
+<p>This collection of scripts is designed to be used for automatic ripping of DVDs or CDs with little to no user intervention.</p>
+
+<p>The script automatically detects when a disk has been inserted, and then decides what type of disk it is (Audio CD, or Video DVD) and starts the appropriate ripping process.</p>
+
+</div>
+<div class="title">obtaining the code</div>
+<div class="readme">
+<p>The code for this project can be obtained using either of the following:
+<ul>
+        <li> <span style="font-family: monospace">git clone <span style="font-style: italic">git://git.soren.co.uk/shane/autorip.git/</span></span></li>
+        <li> <span style="font-family: monospace">git clone <span style="font-style: italic">http://git.soren.co.uk/r/shane/autorip.git/</span></span></li>
+</ul>
+</p>
+</div>
+<div class="title">requirements</div>
+<div class="readme">
+<p>These scripts require a few packages for all the functionality<br />
+These can be installed (on ubuntu) by using or letting <span style="font-family: monospace">install.sh</span> do it for you:
+<pre>
+sudo apt-get install hal mencoder abcde id3v2 lame lsdvd dvdbackup
+</pre>
+dvdbackup is optional and can be used in place of lsdvd, or as a fallback incase lsdvd fails.
+</p>
+</div>
+<div class="title">using the code</div>
+<div class="readme">
+<p>Once the code has been downloaded, edit <span style="font-family: monospace">diskinserted.conf.example</span> to your liking then run <span style="font-family: monospace">install.sh</span> to install the hooks to check for disks being inserted.</p>
+
+<!-- [/Readme for gitweb] -->
