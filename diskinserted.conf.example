@@ -1,0 +1,23 @@
+# Where should rips be stored?
+# Rips are stored in sub-directories "cd" and "dvd", and then further
+# subdirectories based on the name of the disk (DVD) or info from freedb (CD)
+RIPDIR="/media/data/rips/"
+
+# Should disks be ejected after ripping has completed?
+AUTOEJECT="1"
+
+# Should DVDs rip every track on the disk, or just the main feature
+RIPALL="1"
+
+# Should twopass encoding be used?
+TWOPASS="1"
+
+# Should x264 be used?
+X264="1"
+
+# Report Keys, most users won't need to change these as they won't have valid
+# information.
+DO_REPORT="0"
+REPORT_KEY="THISI-SNOTA-VALID-TOKEN"
+REPORT_TYPE="CM"
+REPORT_TARGET="#channel"

@@ -5,17 +5,6 @@ if [ $(whoami) != "root" ]; then
 	exit 1;
 fi;
 
-PHP=`which php`
-if [ "${PHP}" = "" -a "${1}" != "--php" ]; then
-	echo "PHP is required to run this script."
-	echo "Please install PHP before running this script by using: "
-	echo "sudo apt-get install php5-cli"
-	echo ""
-	echo "To do this automatically, please do:"
-	echo "${0} --php"
-	exit 1;
-fi;
-
 REQUIREDAPPS=""
 REQUIREDAPPS="${REQUIREDAPPS} hal"
 REQUIREDAPPS="${REQUIREDAPPS} mencoder"
@@ -24,10 +13,6 @@ REQUIREDAPPS="${REQUIREDAPPS} id3v2"
 REQUIREDAPPS="${REQUIREDAPPS} lame"
 REQUIREDAPPS="${REQUIREDAPPS} lsdvd"
 REQUIREDAPPS="${REQUIREDAPPS} dvdbackup"
-
-if [ "${1}" = "--php" ]; then
-	REQUIREDAPPS="${REQUIREDAPPS} php5-cli"
-fi;
 
 echo "Installing required applications (${REQUIREDAPPS})"
 apt-get update
@@ -48,29 +33,17 @@ for DRIVE in `ls /dev/scd*`; do
 EOF
 done;
 
-echo "Creating temp files.."
-TEMPFILE=`mktemp`
-TEMPFILE_DISKINSERTED=`mktemp`
-TEMPFILE_RIPDVD=`mktemp`
-TEMPFILE_ABCDE=`mktemp`
 
-echo "Downloading latest update to scripts."
-wget http://home.dataforce.org.uk/wiki/?AutoRipDVD -O ${TEMPFILE} -o /dev/null
+cp diskinserted "/usr/bin/diskinserted"
+cp rip_dvd "/usr/bin/rip_dvd"
+cp abcde.conf "/etc/abcde.conf"
 
-extractFile() {
-	FILENAME=${1}
-	OUTPUT=${2}
+chmod a+x "/usr/bin/diskinserted"
+chmod a+x "/usr/bin/rip_dvd"
 
-	echo "Extracting ${FILENAME}"
-
-	${PHP} -r '$foo = file_get_contents("'${TEMPFILE}'"); preg_match("@.*<h4>'${FILENAME}'</h4>.*?<pre>\n(.*?)\n</pre>.*@ums", $foo, $matches); echo html_entity_decode($matches[1]."\n");' > ${OUTPUT}
-	mv ${OUTPUT} ${FILENAME}
-	chmod a+xr ${FILENAME}
-}
-
-extractFile "/usr/bin/diskinserted" "${TEMPFILE_DISKINSERTED}"
-extractFile "/usr/bin/rip_dvd" "${TEMPFILE_RIPDVD}"
-extractFile "/etc/abcde.conf" "${TEMPFILE_ABCDE}"
+if [ ! -e "/root/diskinserted.conf" -a -e "diskinserted.conf.example" ]; then
+	cp "diskinserted.conf.example" "/root/diskinserted.conf"
+fi;
 
 echo "Restarting HAL to enable diskinserted scripts."
 invoke-rc.d hal force-reload
