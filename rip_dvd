@@ -1,0 +1,180 @@
+#!/bin/bash
+echo "Please wait...";
+
+DEVICE="/dev/scd0";
+SPATH="/media/data/rips/";
+ASPECT="";
+VBITRATE="1000";
+AUDIO_ID=" -aid 128";
+SUBTITLE_ID="";
+SUBTITLE_LANG="";
+DEBUG="";
+QUIET="";
+SCALE="";
+EJECT="";
+TWOPASS=0
+X264=0
+NAME="";
+ALLTITLE="";
+X264THREADS="auto";
+
+# If dvdbackup exists, we will fallback to it if lsdvd fails.
+# Sometimes dvdbackup can read the info from a disk that lsdvd can not, or it
+# may be installed when lsdvd is not
+LSDVD=`which lsdvd`
+DVDBACKUP=`which dvdbackup`
+
+ALL=0
+
+while test -n "$1"; do
+	LAST=${1}
+	case "$1" in
+		--all|-a)
+			ALL=1
+			;;
+		--device|-d)
+			shift
+			DEVICE="${1}"
+			;;
+		--name|-n)
+			shift
+			NAME="${1}"
+			;;
+		--path|-p)
+			shift
+			SPATH="${1}"
+			;;
+		--aspect|-a)
+			shift
+			ASPECT="${1//://}"
+			;;
+		--scale-width|-s)
+			shift
+			SCALE="${1}"
+			;;
+		--vbitrate|-vb)
+			shift
+			VBITRATE="${1}"
+			;;
+		-aid)
+			shift
+			AUDIO_ID=" -aid ${1}"
+			;;
+		-sid)
+			shift
+			SUBTITLE_ID=" -sid ${1}"
+			;;
+		-slang)
+			shift
+			SUBTITLE_LANG=" -slang ${1}"
+			;;
+		--debug|-D)
+			DEBUG_CMD="echo -e ----- [DEBUG MODE] -----\nTranscoding command will be displayed rather than executed\n------------------------"
+			DEBUG="echo"
+			DEBUG_CHR=\"
+			;;
+		--quiet|-q)
+			QUIET="> /dev/null"
+			;;
+		--2pass|-2)
+			TWOPASS=1
+			;;
+		--x264)
+			X264=1
+			;;
+		--threads)
+			shift
+			X264THREADS=${1}
+			;;
+		--eject|-e)
+			EJECT="eject"
+			;;
+		--title|-t)
+			shift
+			ALLTITLE="${1}"
+			;;
+		--help|-h)
+			echo "Help not available at this time."
+			exit 0
+			;;
+		*)
+			echo "Unknown variable $1"
+			exit 0
+			;;
+	esac
+	shift
+done
+
+if [ -z $NAME ];   then
+	NAME=`volname $DEVICE | sed -e 's/[ ]*$//g'`
+fi
+if [ $ALL -eq 1 ]; then
+	ALLTITLE=""
+	if [ "${LSDVD}" != "" ]; then
+		ALLTITLE=`${LSDVD} ${DEVICE} | grep "^Title:" | awk '{print $2}' | awk -F, '{print $1}'`
+	fi;
+	if [ "${ALLTITLE}" = "" -a "${DVDBACKUP}" != "" ]; then
+		seq -f "%02.0f" 1 `${DVDBACKUP} -I -i ${DEVICE} | egrep "(Title [0-9]+:)" | wc -l`
+	fi;
+elif [ -z $ALLTITLE ]; then
+	ALLTITLE=""
+	if [ "${LSDVD}" != "" ]; then
+		ALLTITLE=`${LSDVD} $DEVICE | tail -n 2 | grep ":" | awk '{print $3}'`
+	fi;
+	if [ "${ALLTITLE}" = "" -a "${DVDBACKUP}" != "" ]; then
+		MAINTITLE=`${DVDBACKUP} -I -i ${DEVICE} | grep "Title set containing the main feature is" | awk '{print $NF}'`
+		ALLTITLE=`${DVDBACKUP} -I -i ${DEVICE} | grep -A 100 "Title set ${MAINTITLE}" | egrep "(Title [0-9]+:)" | head -n 1 | awk '{print $NF}'  | awk -F : '{print $1}'`
+		ALLTITLE=`seq -f "%02.0f" ${ALLTITLE} ${ALLTITLE}`
+	fi;
+fi
+if [ -z $ASPECT ]; then
+	TITLE=`echo ${ALLTITLE} | awk '{print $1}'`
+	ASPECT=""
+	if [ "${LSDVD}" != "" ]; then
+		ASPECT=`${LSDVD} -v -t $TITLE $DEVICE -Oy | grep aspect | awk -F\' '{print $4}'`
+	fi;
+	if [ "${ASPECT}" = "" -a "${DVDBACKUP}" != "" ]; then
+		ASPECT_TITLE="echo ${TITLE} | sed 's/^[0]*//'"
+		ASPECT=`${DVDBACKUP} -I -i ${DEVICE} | grep -B 100 "Title ${ASPECT_TITLE}:" | grep "aspect ratio" | tail -n 1 | awk '{print $NF}'`
+		ASPECT=`echo ${ASPECT} | sed 's/:/\//'`
+	fi;
+fi;
+
+${DEBUG_CMD}
+for TITLE in ${ALLTITLE}; do
+echo ${RIP_NAME}
+	RIP_NAME=${NAME}
+	if [ $ALL -eq 1 ]; then
+		RIP_NAME=${NAME}_${TITLE}
+		ASPECT=""
+		if [ "${LSDVD}" != "" ]; then
+			ASPECT=`${LSDVD} -v -t $TITLE $DEVICE -Oy | grep aspect | awk -F\' '{print $4}'`
+		fi;
+		if [ "${ASPECT}" = "" -a "${DVDBACKUP}" != "" ]; then
+			ASPECT_TITLE="echo ${TITLE} | sed 's/^[0]*//'"
+			ASPECT=`${DVDBACKUP} -I -i ${DEVICE} | grep -B 100 "Title ${ASPECT_TITLE}:" | grep "aspect ratio" | tail -n 1 | awk '{print $NF}'`
+			ASPECT=`echo ${ASPECT} | sed 's/:/\//'`
+		fi;
+	fi;
+
+
+	AUDIO="-oac mp3lame -lameopts vol=5:cbr:br=128${AUDIO_ID}${SUBTITLE_LANG}${SUBTITLE_ID}"
+	VIDEO="-ovc lavc -lavcopts aspect=${ASPECT}:vcodec=mpeg4:vbitrate=${VBITRATE}:vhq:v4mv:keyint=125"
+	if [ ${X264} -eq 1 ]; then
+		VIDEO="-aspect ${ASPECT} -ovc x264 -x264encopts bitrate=${VBITRATE}:keyint=125:threads=${X264THREADS}"
+	fi;
+	if [ "${SCALE}" != "" ]; then
+		VIDEO="-zoom -xy ${SCALE} ${VIDEO}"
+	fi;
+	
+	if [ ${TWOPASS} -eq 1 ]; then
+		${DEBUG} cd $SPATH
+		${DEBUG} mencoder -idx -v dvd://$TITLE -dvd-device $DEVICE -passlogfile $SPATH$RIP_NAME.avi.log -o /dev/null ${VIDEO}:pass=1 -nosound ${QUIET};
+		${DEBUG} mencoder -idx -v dvd://$TITLE -dvd-device $DEVICE -passlogfile $SPATH$RIP_NAME.avi.log -o $SPATH$RIP_NAME.avi ${VIDEO}:pass=2 ${AUDIO} ${QUIET};
+		${DEBUG} rm -Rf $SPATH$RIP_NAME.avi.log
+	else
+		${DEBUG} mencoder -idx -v dvd://$TITLE -dvd-device $DEVICE -o $SPATH$RIP_NAME.avi ${VIDEO} ${AUDIO} ${QUIET};
+	fi;
+done;
+
+${EJECT} ${DEVICE}

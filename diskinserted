@@ -1,0 +1,129 @@
+#!/bin/sh
+
+DRIVE="${HAL_PROP_BLOCK_DEVICE}"
+RIPDIR="/media/data/rips/"
+AUTOEJECT="1"
+RIPALL="1"
+TWOPASS="1"
+LOGFILE="/tmp/diskinserted.log"
+REPORT_KEY="THISI-SNOTA-VALID-TOKEN"
+REPORT_TYPE="CM"
+REPORT_TARGET="#channel"
+
+echo "${@}" > /tmp/diskinserted
+env >> /tmp/diskinserted
+
+doReport () {
+	echo "-- ${REPORT_KEY} ${REPORT_TYPE} ${REPORT_TARGET} ${1} [`hostname`]" | nc -q 1 soren.co.uk 3302;
+}
+
+# This is here to override any settings above, or redefine doReport.
+if [ -e "${0}.conf" ]; then . "${0}.conf"; fi
+if [ -e "/root/diskinserted.conf" ]; then . "/root/diskinserted.conf"; fi
+
+if [ "${1}" != "--doactions" ]; then
+	if [ "${HALD_ACTION}" = "add" -a "${DRIVE}" != "" ]; then
+		${0} --doactions 2>&1 &
+	fi;
+	if [ "${HALD_ACTION}" = "remove" ]; then
+		ps ux | egrep "(rip_dvd|mencoder)" | grep -v grep | awk '{print $2}' | xargs kill -9
+	fi;
+	exit 0;
+fi;
+
+if [ "${DRIVE}" = "" -o "${HAL_PROP_VOLUME_DISC_TYPE}" = "" ]; then
+	echo "This should only be called by HAL."
+	exit 1;
+fi;
+
+DONE="0";
+TMPDIR=`mktemp -d`
+ALL=""
+if [ "${RIPALL}" = "1" ]; then
+	ALL="--all "
+fi;
+DOTWOPASS=""
+if [ "${TWOPASS}" = "1" ]; then
+	DOTWOPASS="--2pass "
+fi;
+VOLNAME=${HAL_PROP_VOLUME_LABEL}
+if [ "${VOLNAME}" = "" ]; then
+	VOLNAME=`volname ${DRIVE}`
+fi;
+VOLNAME=`echo "${VOLNAME}" | sed 's/^ *//;s/ *$//;s/\//_/' | tr -d '\r'`
+
+# Check for DVD
+if [ "${HAL_PROP_VOLUME_DISC_TYPE}" = "dvd_rom" -a "${HAL_PROP_VOLUME_DISC_IS_VIDEODVD}" = "true" ]; then
+	doReport "DVD Inserted: ${VOLNAME} in ${DRIVE}"
+	DIRNAME="${RIPDIR}/dvd/${VOLNAME}/"
+	if [ ! -e "${DIRNAME}" ]; then
+		DONE="1";
+		doReport "Beginning Rip of ${VOLNAME} to ${DIRNAME} [RipAll=${RIPALL} | TwoPass=${TWOPASS}]"
+		mkdir -p "${DIRNAME}"
+		/usr/bin/rip_dvd ${ALL}${DOTWOPASS}--x264 -d ${DRIVE} --path "${DIRNAME}" 2>&1 > "${LOGFILE}"
+		FILECOUNT=`ls -1 "${DIRNAME}" | wc -l`
+		if [ "${FILECOUNT}" = "0" ]; then
+			doReport "Rip failed for ${VOLNAME}"
+			rm -Rf "${DIRNAME}"
+		else
+			doReport "Rip completed for ${VOLNAME} - Ripped ${FILECOUNT} files."
+			rm -Rf "${LOGFILE}"
+		fi;
+
+		chmod a+rwx "${DIRNAME}"/*
+	fi;
+fi;
+
+# Check for audio CD
+if [ "${HAL_PROP_VOLUME_DISC_TYPE}" = "cd_rom" -a "${HAL_PROP_VOLUME_DISC_HAS_AUDIO}" = "true" ]; then
+	DISKID=`cd-discid ${DRIVE}`
+	
+	USER=`whoami`
+	HOST=`hostname`
+	cddb-tool query http://freedb.freedb.org/~cddb/cddb.cgi 6 ${USER} ${HOST} ${DISKID} > "${TMPDIR}/cddb-query"
+	LINES=`wc -l "${TMPDIR}/cddb-query" | cut -d \  -f 1`
+	CDDBREAD=""
+	if [ "${LINES}" = "1" ]; then
+		CDDBREAD=`cat "${TMPDIR}/cddb-query" | cut -d \  -f 2-`
+	else
+		CDDBREAD=`cat "${TMPDIR}/cddb-query" | head -n 2 | tail -n 1`
+	fi;
+	cddb-tool read http://freedb.freedb.org/~cddb/cddb.cgi 6 shane gaara ${CDDBREAD} > "${TMPDIR}/cddb-read"
+
+	TITLEARTIST=`cat ${TMPDIR}/cddb-read | grep "DTITLE" | cut -d = -f 2-`
+	ARTIST=`echo ${TITLEARTIST} | cut -d / -f 1 | sed 's/^ *//;s/ *$//;s/\//_/' | tr -d '\r'`
+	TITLE=`echo ${TITLEARTIST} | cut -d / -f 2- | sed 's/^ *//;s/ *$//;s/\//_/' | tr -d '\r'`
+
+	doReport "Audio CD Inserted: ${ARTIST} - ${TITLE} in ${DRIVE}"
+
+	DIRNAME="${RIPDIR}/cd/${ARTIST}/${TITLE}"
+
+	if [ ! -e "${DIRNAME}" ]; then
+		DONE="1"
+		doReport "Beginning Rip of ${ARTIST} - ${TITLE} to ${DIRNAME}"
+		mkdir -p "${DIRNAME}"
+		NEWTEMP=`mktemp -d -p ${RIPDIR}`
+		cd ${NEWTEMP}
+		abcde -N -o mp3 -p -P -d ${DRIVE} -a cddb,read,encode,tag,move,playlist,clean
+		mv "${NEWTEMP}"/*-*/*.mp3 "${DIRNAME}"
+		chmod a+rwx "${DIRNAME}"/*
+		cd ${RIPDIR}
+		rm -Rf ${NEWTEMP}
+		FILECOUNT=`ls -1 "${DIRNAME}" | wc -l`
+		if [ "${FILECOUNT}" = "0" ]; then
+			doReport "Rip failed for ${ARTIST} - ${TITLE}"
+			rm -Rf "${DIRNAME}"
+		else
+			doReport "Rip completed for ${ARTIST} - ${TITLE} - Ripped ${FILECOUNT} files."
+		fi;
+	fi;
+fi;
+
+if [ "${DONE}" = "1" ]; then
+	if [ "${AUTOEJECT}" = "1" ]; then
+		eject ${DRIVE};
+	fi;
+	exit 0;
+fi;
+
+rm -Rf ${TMPDIR}
